@@ -1,0 +1,2 @@
+#!/bin/bash
+/usr/bin/env RScript /Users/NicholasLaventis/Desktop/Data_Sci/stockFinal.R
