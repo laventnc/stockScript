@@ -1,5 +1,5 @@
 # stockScript
-Scrapes stock info from the quotes.wsj and nasdaq, while leveraging TTR and Quantmod for the rest.
+Scrapes stock info from quotes.wsj and nasdaq, while leveraging TTR and Quantmod for the rest...
 Outputs this info to a csv; also contains an executable file for the technologically challenged 
 
 Pulls:
