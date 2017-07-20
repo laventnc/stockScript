@@ -4,9 +4,10 @@ library(rvest)
 library(plyr)
 library(dplyr)
 library(tidyr)
+library(stringr)
 #install.packages(C('quantmod','TTR','rvest','plyr','dplyr','tidyr'))
 
-setwd('/Users/NicholasLaventis/Desktop')
+setwd('/Users/NicholasLaventis/Desktop/GitHub/stockScript')
 
 #List of Stocks, Remove or Add as Necessary
 Stocks <- list("AA","ARNC","AAPL","ADM","AMGN","AMZN","AWK","BA","BF.B","BRK.B","BX","CAT","CMI","CSCO","CSX","CVS",
@@ -89,7 +90,16 @@ updateStocks <- function(Stocks) {
   ttrDF <<- data.frame(matrix(unlist(wrapper), nrow = length(Stocks), byrow = TRUE), stringsAsFactors = FALSE)
   colnames(ttrDF) <<- c("Symbol","lowerBB","upperBB","SMA_50","SMA_200","RSI","stochRSI")
   
-  mergeAndClean()
+  finalDF <<- mergeAndClean()
+  wsjWrapper <- wsjData(Stocks)
+  
+  wsjDF <<- data.frame(do.call("rbind", wsjWrapper))
+  colnames(wsjDF) <- c("EBITDA margin","Book Val/share","CF/share","FCF/share","Gross margin","ROA","ROIC","Tang Book Val","Debt-to-Equity","Liquidity (Current Ratio)")
+  rownames(wsjDF) <- Stocks
+  combinedDF <- cbind(finalDF, wsjDF)
+  
+  write.csv(x=combinedDF, file=paste(format(Sys.time(), "%Y-%m-%d %I-%p"), 'csv', sep = "."))
+
 }
 
 # calculates the 200 day SMA, because only yahoo has enough data
@@ -107,6 +117,77 @@ twoSMA <- function(Stock) {
   return(as.double(coredata(tail(SMA(stock[,closeName], n=200), n=1))))
 }
 
+# Grab more specific information from wallstreetjournal (annual data, not quarterly)
+wsjWrapper <- list() 
+# order is EBITDA margin, Book Value/share, CF/share, FCF/share, Gross margin, ROA, ROIC, Tang Book Val, Debt-to-Equity, Liquidity (Current Ratio)
+wsjData <- function(Stocks) {
+  stockLinks <- list()
+  base_url <- "http://quotes.wsj.com/"
+  for (i in 1:length(Stocks)) {
+    stockLinks[i] <- paste0(base_url, Stocks[i],"/financials")
+  }
+  
+  for (j in 1:length(stockLinks)) {
+    wsjTemp <- list()
+    webpage <- read_html(stockLinks[[j]])
+    
+    html_nodes(webpage, ".cr_financials_table") %>%
+      html_table(fill = TRUE) -> wsj_table_1
+    
+    month <- colnames(wsj_table_1[[1]])[[2]] # get the current month so that you can reference the value without row number/col num
+
+    wsjTemp[[1]] <- tryCatch({ # hanlde stocks where EBITDA is not present
+      wsj_table_1[[1]][[month]][wsj_table_1[[1]][,1] == "EBITDA"][[2]]
+    }, error = function(e) {
+      "N/A"
+    })
+    
+    wsjTemp[[2]] <- wsj_table_1[[2]][[month]][wsj_table_1[[2]][,1] == "Book Value Per Share"][[2]]
+    wsjTemp[[3]] <- wsj_table_1[[3]][[month]][wsj_table_1[[3]][,1] == "Cash Flow Per Share"][[2]]
+   
+    wsjTemp[[4]] <- wsj_table_1[[3]][[month]][wsj_table_1[[3]][,1] == "Free Cash Flow Per Share"][[2]]
+    
+    html_nodes(webpage, xpath="//table[@class='cr_dataTable cr_sub_profitability']") %>%
+      html_table(fill = TRUE) -> wsj_table_2
+    wsjTemp[[5]] <- gsub("([[:alpha:]]|[[:blank:]])+", "", wsj_table_2[[1]][1,])
+    if (wsjTemp[[5]] == "-") {
+      wsjTemp[[5]] <- "N/A"
+    }
+    wsjTemp[[6]] <- gsub("([[:alpha:]]|[[:blank:]])+", '', wsj_table_2[[1]][5,])
+    if (wsjTemp[[6]] == "-") {
+      wsjTemp[[6]] <- "N/A"
+    }
+    wsjTemp[[7]] <- gsub("([[:alpha:]]|[[:blank:]])+", '', wsj_table_2[[1]][8,])
+    if (wsjTemp[[7]] == "-") {
+      wsjTemp[[7]] <- "N/A"
+    }
+    
+    
+    html_nodes(webpage, xpath="//table[@class='cr_dataTable cr_mod_pershare']") %>%
+      html_table(fill = TRUE) -> wsj_table_3
+    wsjTemp[[8]] <- gsub("([[:alpha:]]|[[:blank:]])+", "", wsj_table_3[[1]][2,][[1]])
+    
+    
+    html_nodes(webpage, xpath="//table[@class='cr_dataTable cr_sub_capital']") %>%
+      html_table(fill=TRUE) -> wsj_table_4
+    wsjTemp[[9]] <- gsub("([[:alpha:]]|[[:blank:]])+", "",  wsj_table_4[[1]][5,][[1]])
+    if (wsjTemp[[9]] == "--") {
+      wsjTemp[[9]] <- "N/A"
+    }
+    
+    
+    html_nodes(webpage, xpath="//table[@class='cr_dataTable cr_sub_liquidity']") %>%
+      html_table(fill=TRUE) -> wsj_table_5
+    wsjTemp[[10]] <- gsub("([[:alpha:]]|[[:blank:]])+", "", wsj_table_5[[1]][1,][[1]])
+    if (wsjTemp[[10]] == "-") {
+      wsjTemp[[10]] <- "N/A"
+    }
+    
+    wsjWrapper[[j]] <<- unlist(wsjTemp) # wrap the numbers in a list of list, for easy binding to data.frame
+  }
+  
+  return(wsjWrapper)
+}
 
 # Merge the Data so that the different stocks format correctly into the DF
 mergeAndClean <- function() {
@@ -171,8 +252,7 @@ mergeAndClean <- function() {
   sapply(X=locations, function(loc) {
     finalDF$`Current Price`[loc] <<- levels(vals[[loc]][[1]])
   })
-  
-  write.csv(x=finalDF, file=paste(format(Sys.time(), "%Y-%m-%d %I-%p"), 'csv', sep = "."))
+  return (finalDF)
 }
 
 updateStocks(Stocks)
