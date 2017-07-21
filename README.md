@@ -1,6 +1,8 @@
 # stockScript
 Scrapes stock info from quotes.wsj and nasdaq, while leveraging TTR and Quantmod for the rest...
-Outputs this info to a csv; also contains an executable file for easy use.
+Outputs this info to a csv. 
+
+Also contains an executable file for easy use.
 
 ***You're welcome Dad***
 
